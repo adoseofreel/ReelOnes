@@ -11,7 +11,7 @@ if okId and type(trackId) == 'string' and trackId ~= '' and not trackId:lower():
 end
 
 local ex = ac.connect({
-  key = ac.StructItem.key('pole_barn.lifts.exec'),
+  key = ac.StructItem.key('pole_barn.lifts.exec2'),
   beat = ac.StructItem.int32(),
   hold = ac.StructItem.int32(),
   platOn = ac.StructItem.array(ac.StructItem.int32(), 2),
@@ -23,6 +23,10 @@ local ex = ac.connect({
   liftX = ac.StructItem.array(ac.StructItem.float(), 2),
   z0 = ac.StructItem.float(), z1 = ac.StructItem.float(), xi = ac.StructItem.float(), xo = ac.StructItem.float(),
   platW = ac.StructItem.float(), platT = ac.StructItem.float(), platL = ac.StructItem.float(),
+  liftTop = ac.StructItem.array(ac.StructItem.float(), 2),
+  liftVel = ac.StructItem.array(ac.StructItem.float(), 2),
+  ladderOn = ac.StructItem.array(ac.StructItem.int32(), 2),
+  step = ac.StructItem.float(),
 }, true, ac.SharedNamespace.Shared)
 
 local bodies, inWorld, surf, surfAt, lastY = {}, {}, {}, {}, {}
@@ -79,12 +83,20 @@ function script.update(dt)
         end)
       else lastY[k] = nil end
     end
-    -- solid road surface at the top
-    local want = ex.surfY[k] > -100 and ex.surfY[k] or nil
+    -- stepped road surface under the tyres: follows the runways up and down, so the tyres
+    -- always touch the ground (a car with its tyres in the air gets sent to the pits online)
+    local want = nil
+    if ex.ladderOn[k] == 1 then
+      local top, at = ex.liftTop[k], surfAt[k]
+      local step = math.max(0.01, ex.step > 0 and ex.step or 0.03)
+      if not at or math.abs(top - at) >= step or (math.abs(ex.liftVel[k]) < 0.001 and math.abs(top - at) > 0.002) then want = top
+      else want = at end
+    end
     if want ~= surfAt[k] then
-      if surf[k] then pcall(function() surf[k]:dispose() end); surf[k] = nil end
-      if want then surf[k] = makeSurface(k, want) end
-      surfAt[k] = want
+      local new = want and makeSurface(k, want) or nil          -- new step first, then remove the old one
+      if surf[k] then pcall(function() surf[k]:dispose() end) end
+      surf[k], surfAt[k] = new, want
+      ex.surfY[k] = want or -1000
     end
     if ex.wake[k] >= 0 then pcall(physics.awakeCar, ex.wake[k]) end
   end
