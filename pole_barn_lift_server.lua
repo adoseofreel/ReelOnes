@@ -3,8 +3,12 @@
 -- The track's own lifts.lua runs the lift and tells this script what to do through shared memory;
 -- this script owns the physics (scripts sent by a server are allowed to touch physics online).
 
+ac.log('pole_barn lift helper: loaded')
+-- only stop when we're sure this is a different track (a failed lookup doesn't count)
 local okId, trackId = pcall(ac.getTrackID)
-if not okId or not tostring(trackId):lower():find('pole_barn', 1, true) then return end
+if okId and type(trackId) == 'string' and trackId ~= '' and not trackId:lower():find('pole_barn', 1, true) then
+  ac.log('pole_barn lift helper: not the pole_barn track (' .. trackId .. '), idle'); return
+end
 
 local ex = ac.connect({
   key = ac.StructItem.key('pole_barn.lifts.exec'),
@@ -23,7 +27,7 @@ local ex = ac.connect({
 
 local bodies, inWorld, surf, surfAt = {}, {}, {}, {}
 local held = false
-local status = 'waiting for the track'
+local status = 'loaded, waiting for the track'
 
 local function body(k)
   if bodies[k] == nil and ex.platW > 0 then
