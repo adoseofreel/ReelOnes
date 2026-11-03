@@ -25,15 +25,16 @@ local ex = ac.connect({
   platW = ac.StructItem.float(), platT = ac.StructItem.float(), platL = ac.StructItem.float(),
 }, true, ac.SharedNamespace.Shared)
 
-local bodies, inWorld, surf, surfAt = {}, {}, {}, {}
+local bodies, inWorld, surf, surfAt, lastY = {}, {}, {}, {}, {}
 local held = false
 local status = 'loaded, waiting for the track'
 
 local function body(k)
   if bodies[k] == nil and ex.platW > 0 then
     local ok, b = pcall(function()
-      local b = physics.RigidBody({ physics.Collider.Box(vec3(ex.platW, ex.platT, ex.platL)) }, 3000, nil, true, false)
+      local b = physics.RigidBody({ physics.Collider.Box(vec3(ex.platW, ex.platT, ex.platL)) }, 200000, nil, true, false)
       b:setSemiDynamic(true, false)
+      pcall(function() b:setDamping(0.9, 0.99, true) end)   -- no wobble if it ever turns into a free body
       return b
     end)
     bodies[k] = ok and b or false
@@ -65,7 +66,18 @@ function script.update(dt)
     if b then
       local on = ex.platOn[k] == 1
       if on ~= inWorld[k] then pcall(function() b:setInWorld(on) end); inWorld[k] = on end
-      if on then pcall(function() b:setTransformation(mat4x4.translation(vec3(ex.platX[k], ex.platY[k], ex.platZ[k])), true) end) end
+      if on then
+        -- keep the platform exactly on its path: position, plus the lift's own speed (no sagging, no rebound)
+        local y = ex.platY[k]
+        local vy = (lastY[k] and dt > 0) and math.max(-1.5, math.min(1.5, (y - lastY[k]) / dt)) or 0
+        lastY[k] = y
+        pcall(function()
+          if not b:isSemiDynamic() then b:setSemiDynamic(true, false) end   -- touched by the car: make it a moving platform again
+          b:setTransformation(mat4x4.translation(vec3(ex.platX[k], y, ex.platZ[k])), false)
+          b:setVelocity(vec3(0, vy, 0))
+          b:setAngularVelocity(vec3(0, 0, 0))
+        end)
+      else lastY[k] = nil end
     end
     -- solid road surface at the top
     local want = ex.surfY[k] > -100 and ex.surfY[k] or nil
